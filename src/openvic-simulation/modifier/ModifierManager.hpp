@@ -2,13 +2,11 @@
 
 #include "openvic-simulation/modifier/Modifier.hpp"
 #include "openvic-simulation/modifier/ModifierEffectCache.hpp"
+#include "openvic-simulation/modifier/ModifierEffectMapping.hpp"
 #include "openvic-simulation/modifier/StaticModifierCache.hpp"
 #include "openvic-simulation/types/IdentifierRegistry.hpp"
 
 namespace OpenVic {
-
-	template<typename Fn>
-	concept ModifierEffectValidator = std::predicate<Fn, ModifierEffect const&>;
 
 	struct ModifierManager {
 		friend struct StaticModifierCache;
@@ -37,10 +35,11 @@ namespace OpenVic {
 		ModifierEffectCache PROPERTY(modifier_effect_cache);
 		StaticModifierCache PROPERTY(static_modifier_cache);
 
+		std::vector<ModifierEffectMapping> PROPERTY(modifier_effect_mappings);
+
 		/* effect_validator takes in ModifierEffect const& */
 		NodeTools::key_value_callback_t _modifier_effect_callback(
-			ModifierValue& modifier, Modifier::modifier_type_t type, NodeTools::key_value_callback_t default_callback,
-			ModifierEffectValidator auto effect_validator
+			ModifierValue& modifier, Modifier::modifier_type_t type, NodeTools::key_value_callback_t default_callback
 		) const;
 
 	public:
@@ -50,7 +49,9 @@ namespace OpenVic {
 			bool positive_good,
 			ModifierEffect::format_t format,
 			ModifierEffect::target_t targets,
-			std::string_view localisation_key = {}
+			std::string_view localisation_key = {},
+			// mapping_key is placed after localisation_key as it's less likely to be set explicitly
+			std::string_view mapping_key = {}
 		);
 
 		bool register_complex_modifier(std::string_view identifier);
@@ -62,6 +63,7 @@ namespace OpenVic {
 			std::string const& identifier, ModifierEffect const* effect, std::vector<Modifier::modifier_type_t> const& types
 		);
 
+		bool setup_modifier_effect_mappings();
 		bool setup_modifier_effects();
 
 		bool add_event_modifier(std::string_view identifier, ModifierValue&& values, IconModifier::icon_t icon);
@@ -77,30 +79,12 @@ namespace OpenVic {
 
 		bool parse_scripts(DefinitionManager const& definition_manager);
 
-		NodeTools::node_callback_t expect_validated_modifier_value_and_default(
-			NodeTools::callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type,
-			NodeTools::key_value_callback_t default_callback, ModifierEffectValidator auto effect_validator
-		) const;
-		NodeTools::node_callback_t expect_validated_modifier_value(
-			NodeTools::callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type,
-			ModifierEffectValidator auto effect_validator
-		) const;
-
 		NodeTools::node_callback_t expect_modifier_value_and_default(
 			NodeTools::callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type,
 			NodeTools::key_value_callback_t default_callback
 		) const;
 		NodeTools::node_callback_t expect_modifier_value(
 			NodeTools::callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type
-		) const;
-
-		NodeTools::node_callback_t expect_whitelisted_modifier_value_and_default(
-			NodeTools::callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type,
-			string_set_t const& whitelist, NodeTools::key_value_callback_t default_callback
-		) const;
-		NodeTools::node_callback_t expect_whitelisted_modifier_value(
-			NodeTools::callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type,
-			string_set_t const& whitelist
 		) const;
 
 		// In the functions below, key_map refers to a map from identifier strings to NodeTools::dictionary_entry_t,

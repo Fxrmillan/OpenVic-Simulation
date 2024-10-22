@@ -41,9 +41,18 @@ std::string ModifierEffect::make_default_modifier_effect_localisation_key(std::s
 }
 
 ModifierEffect::ModifierEffect(
-	std::string_view new_identifier, bool new_positive_good, format_t new_format, target_t new_targets,
+	std::string_view new_identifier,
+	bool new_positive_good,
+	format_t new_format,
+	target_t new_targets,
+	std::string_view new_mapping_key,
 	std::string_view new_localisation_key
-) : HasIdentifier { new_identifier }, positive_good { new_positive_good }, format { new_format }, targets { new_targets },
+) : HasIdentifier { new_identifier },
+	positive_good { new_positive_good },
+	format { new_format },
+	targets { new_targets },
+	mapping_key { new_mapping_key.empty() ? new_identifier : new_mapping_key },
 	localisation_key {
-		new_localisation_key.empty() ? make_default_modifier_effect_localisation_key(new_identifier) : new_localisation_key
+		// mapping_key will have been initialised by this point as it's before localisation_key in the struct's declaration
+		new_localisation_key.empty() ? make_default_modifier_effect_localisation_key(mapping_key) : new_localisation_key
 	} {}

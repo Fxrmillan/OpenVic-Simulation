@@ -898,6 +898,10 @@ bool Dataloader::load_defines(DefinitionManager& definition_manager) {
 		Logger::error("Failed to load interface files!");
 		ret = false;
 	}
+	if (!definition_manager.get_modifier_manager().setup_modifier_effect_mappings()) {
+		Logger::error("Failed to set up modifier effect mappings!");
+		ret = false;
+	}
 	if (!definition_manager.get_modifier_manager().setup_modifier_effects()) {
 		Logger::error("Failed to set up modifier effects!");
 		ret = false;

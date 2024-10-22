@@ -64,9 +64,8 @@ bool InventionManager::load_inventions_file(
 		) -> bool {
 			using enum Modifier::modifier_type_t;
 
-			// TODO - use the same variable for all modifiers rather than combining them at the end?
 			ModifierValue loose_modifiers;
-			ModifierValue modifiers;
+			ModifierValue effect_modifiers;
 
 			Invention::unit_set_t activated_units;
 			Invention::building_set_t activated_buildings;
@@ -86,8 +85,8 @@ bool InventionManager::load_inventions_file(
 				"limit", ONE_EXACTLY, limit.expect_script(),
 				"chance", ONE_EXACTLY, chance.expect_conditional_weight(ConditionalWeight::BASE),
 				"effect", ZERO_OR_ONE, modifier_manager.expect_modifier_value_and_keys(
-					move_variable_callback(modifiers),
-					INVENTION,
+					move_variable_callback(effect_modifiers),
+					INVENTION_EFFECT,
 					"gas_attack", ZERO_OR_ONE, expect_bool(assign_variable_callback(unlock_gas_attack)),
 					"gas_defence", ZERO_OR_ONE, expect_bool(assign_variable_callback(unlock_gas_defence)),
 					"activate_unit", ZERO_OR_MORE,
@@ -101,10 +100,10 @@ bool InventionManager::load_inventions_file(
 				)
 			)(value);
 
-			modifiers += loose_modifiers;
+			loose_modifiers += effect_modifiers;
 
 			ret &= add_invention(
-				identifier, std::move(modifiers), news, std::move(activated_units), std::move(activated_buildings),
+				identifier, std::move(loose_modifiers), news, std::move(activated_units), std::move(activated_buildings),
 				std::move(enabled_crimes), unlock_gas_attack, unlock_gas_defence, std::move(limit), std::move(chance)
 			);
 

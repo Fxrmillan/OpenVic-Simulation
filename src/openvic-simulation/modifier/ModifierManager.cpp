@@ -5,7 +5,7 @@ using namespace OpenVic::NodeTools;
 
 bool ModifierManager::add_modifier_effect(
 	ModifierEffect const*& effect_cache, std::string_view identifier, bool positive_good, ModifierEffect::format_t format,
-	ModifierEffect::target_t targets, std::string_view localisation_key
+	ModifierEffect::target_t targets, std::string_view localisation_key, std::string_view mapping_key
 ) {
 	using enum ModifierEffect::target_t;
 
@@ -35,11 +35,58 @@ bool ModifierManager::add_modifier_effect(
 		return false;
 	}
 
-	const bool ret = modifier_effects.add_item({ std::move(identifier), positive_good, format, targets, localisation_key });
+	const bool ret = modifier_effects.add_item({ identifier, positive_good, format, targets, mapping_key, localisation_key });
 
 	if (ret) {
 		effect_cache = &modifier_effects.get_items().back();
 	}
+
+	return ret;
+}
+
+bool ModifierManager::setup_modifier_effect_mappings() {
+	if (!modifier_effect_mappings.empty()) {
+		Logger::error("Modifier effect mappings have already been initialised!");
+		return false;
+	}
+
+	using enum ModifierEffectMapping::modifier_effect_mapping_type_t;
+
+	modifier_effect_mappings.reserve(static_cast<size_t>(MODIFIER_EFFECT_MAPPING_COUNT));
+
+	bool ret = true;
+
+	const auto add_modifier_effect_mapping = [this, &ret](
+		ModifierEffectMapping::modifier_effect_mapping_type_t type,
+		// MODIFIER_EFFECT_MAPPING_COUNT is used as an invalid/unset value here
+		ModifierEffectMapping::modifier_effect_mapping_type_t fallback_type = MODIFIER_EFFECT_MAPPING_COUNT
+	) -> void {
+		if (static_cast<size_t>(type) != modifier_effect_mappings.size()) {
+			Logger::error(
+				"Trying to place modifier effect mapping type \"",
+				ModifierEffectMapping::modifier_effect_mapping_type_to_string(type), "\" with index ",
+				static_cast<size_t>(type), " in position ", modifier_effect_mappings.size(), "!"
+			);
+			ret = false;
+			return;
+		}
+
+		// The fallback pointer will be valid even if its map hasn't yet been initialised as we have reserved the space
+		// (further emplacements won't invalidate the pointer for the same reason).
+
+		modifier_effect_mappings.emplace_back(
+			type, fallback_type < MODIFIER_EFFECT_MAPPING_COUNT ?
+				&modifier_effect_mappings[static_cast<size_t>(fallback_type)] : nullptr
+		);
+	};
+
+	add_modifier_effect_mapping(LEADER_MAPPING);
+	add_modifier_effect_mapping(TECHNOLOGY_MAPPING);
+	add_modifier_effect_mapping(UNIT_TERRAIN_MAPPING);
+	add_modifier_effect_mapping(BASE_COUNTRY_MAPPING);
+	add_modifier_effect_mapping(BASE_PROVINCE_MAPPING, BASE_COUNTRY_MAPPING);
+	add_modifier_effect_mapping(EVENT_MAPPING, BASE_PROVINCE_MAPPING);
+	add_modifier_effect_mapping(TERRAIN_MAPPING, BASE_PROVINCE_MAPPING);
 
 	return ret;
 }
@@ -686,36 +733,59 @@ bool ModifierManager::parse_scripts(DefinitionManager const& definition_manager)
 	return ret;
 }
 
+static constexpr ModifierEffectMapping::modifier_effect_mapping_type_t modifier_type_to_modifier_effect_mapping_type(
+	Modifier::modifier_type_t type
+) {
+	using enum Modifier::modifier_type_t;
+	using enum ModifierEffectMapping::modifier_effect_mapping_type_t;
+
+	switch (type) {
+		case EVENT:            return EVENT_MAPPING;
+		case STATIC:           return BASE_COUNTRY_MAPPING; // shouldn't this be BASE_PROVINCE_MAPPING or EVENT_MAPPING?
+		case TRIGGERED:        return BASE_COUNTRY_MAPPING; // maybe should be BASE_PROVINCE_MAPPING or EVENT_MAPPING, but less likely
+		case CRIME:            return BASE_PROVINCE_MAPPING;
+		case TERRAIN:          return TERRAIN_MAPPING;
+		case CLIMATE:          return BASE_PROVINCE_MAPPING;
+		case CONTINENT:        return BASE_PROVINCE_MAPPING;
+		case BUILDING:         return BASE_PROVINCE_MAPPING;
+		case LEADER:           return LEADER_MAPPING;
+		case UNIT_TERRAIN:     return UNIT_TERRAIN_MAPPING;
+		case NATIONAL_VALUE:   return BASE_COUNTRY_MAPPING;
+		case NATIONAL_FOCUS:   return BASE_PROVINCE_MAPPING;
+		case ISSUE:            return BASE_COUNTRY_MAPPING;
+		case REFORM:           return BASE_COUNTRY_MAPPING;
+		case TECHNOLOGY:       return TECHNOLOGY_MAPPING;
+		case INVENTION:        return BASE_COUNTRY_MAPPING;
+		case INVENTION_EFFECT: return TECHNOLOGY_MAPPING;
+		case TECH_SCHOOL:      return BASE_COUNTRY_MAPPING;
+		default:               return MODIFIER_EFFECT_MAPPING_COUNT; // Used as an invalid valid
+	}
+}
+
 key_value_callback_t ModifierManager::_modifier_effect_callback(
-	ModifierValue& modifier, Modifier::modifier_type_t type, key_value_callback_t default_callback,
-	ModifierEffectValidator auto effect_validator
+	ModifierValue& modifier, Modifier::modifier_type_t type, key_value_callback_t default_callback
 ) const {
-	const auto add_modifier_cb = [this, &modifier, effect_validator](
+	const auto add_modifier_cb = [this, &modifier](
 		ModifierEffect const* effect, ast::NodeCPtr value
 	) -> bool {
-		if (effect_validator(*effect)) {
-			static const case_insensitive_string_set_t no_effect_modifiers {
-				"boost_strongest_party", "poor_savings_modifier",   "local_artisan_input",     "local_artisan_throughput",
-				"local_artisan_output",  "artisan_input",           "artisan_throughput",      "artisan_output",
-				"import_cost",           "unciv_economic_modifier", "unciv_military_modifier"
-			};
+		static const case_insensitive_string_set_t no_effect_modifiers {
+			"boost_strongest_party", "poor_savings_modifier",   "local_artisan_input",     "local_artisan_throughput",
+			"local_artisan_output",  "artisan_input",           "artisan_throughput",      "artisan_output",
+			"import_cost",           "unciv_economic_modifier", "unciv_military_modifier"
+		};
 
-			if (no_effect_modifiers.contains(effect->get_identifier())) {
-				Logger::warning("This modifier does nothing: ", effect->get_identifier());
-			}
-
-			return expect_fixed_point(map_callback(modifier.values, effect))(value);
-		} else {
-			Logger::error("Failed to validate modifier effect: ", effect->get_identifier());
-			return false;
+		if (no_effect_modifiers.contains(effect->get_identifier())) {
+			Logger::warning("This modifier does nothing: ", effect->get_identifier());
 		}
+
+		return expect_fixed_point(map_callback(modifier.values, effect))(value);
 	};
 
 	const auto add_flattened_modifier_cb = [this, add_modifier_cb](
-		std::string_view prefix, std::string_view key, ast::NodeCPtr value
+		ModifierEffectMapping const& modifier_effect_mapping, std::string_view prefix, std::string_view key, ast::NodeCPtr value
 	) -> bool {
 		const std::string flat_identifier = get_flat_identifier(prefix, key);
-		ModifierEffect const* effect = get_modifier_effect_by_identifier(flat_identifier);
+		ModifierEffect const* effect = modifier_effect_mapping.lookup_modifier_effect(flat_identifier);
 		if (effect != nullptr) {
 			return add_modifier_cb(effect, value);
 		} else {
@@ -727,13 +797,33 @@ key_value_callback_t ModifierManager::_modifier_effect_callback(
 	return [this, type, default_callback, add_modifier_cb, add_flattened_modifier_cb](
 		std::string_view key, ast::NodeCPtr value
 	) -> bool {
+		using enum ModifierEffectMapping::modifier_effect_mapping_type_t;
+
+		// TODO - template-ise the modifier type argument so getting the ModifierEffectMapping pointer can be made constexpr
+		const ModifierEffectMapping::modifier_effect_mapping_type_t mapping_type =
+			modifier_type_to_modifier_effect_mapping_type(type);
+
+		if (mapping_type >= MODIFIER_EFFECT_MAPPING_COUNT) {
+			Logger::error(
+				"Modifier type \"", Modifier::modifier_type_to_string(type),
+				"\" has produced an invalid modifier effect mapping type \"",
+				ModifierEffectMapping::modifier_effect_mapping_type_to_string(mapping_type), "\"!"
+			);
+			return false;
+		}
+
+		ModifierEffectMapping const& modifier_effect_mapping = modifier_effect_mappings[static_cast<size_t>(mapping_type)];
 
 		if (dryad::node_has_kind<ast::IdentifierValue>(value)) {
-			ModifierEffect const* effect = get_modifier_effect_by_identifier(key);
+			ModifierEffect const* effect = modifier_effect_mapping.lookup_modifier_effect(key);
 
 			if (effect != nullptr) {
 				return add_modifier_cb(effect, value);
-			} else if (key == "war_exhaustion_effect") {
+			}
+
+			// This will all be unnecessary when using modifier effect mappings
+
+			/* else if (key == "war_exhaustion_effect") {
 				Logger::warning("war_exhaustion_effect does nothing (vanilla issues have it).");
 				return true;
 			} else {
@@ -758,7 +848,7 @@ key_value_callback_t ModifierManager::_modifier_effect_callback(
 					);
 					return false;
 				}
-			}
+			}*/
 		} else if (dryad::node_has_kind<ast::ListValue>(value) && complex_modifiers.contains(key)) {
 			if (key == "rebel_org_gain") { // because of course there's a special one
 				std::string_view faction_identifier;
@@ -769,11 +859,17 @@ key_value_callback_t ModifierManager::_modifier_effect_callback(
 					"value", ONE_EXACTLY, assign_variable_callback(value_node)
 				)(value);
 
-				ret &= add_flattened_modifier_cb(key, faction_identifier, value_node);
+				ret &= add_flattened_modifier_cb(modifier_effect_mapping, key, faction_identifier, value_node);
 
 				return ret;
 			} else {
-				return expect_dictionary(std::bind_front(add_flattened_modifier_cb, key))(value);
+				return expect_dictionary(
+					[add_flattened_modifier_cb, &modifier_effect_mapping, key](
+						std::string_view dict_key, ast::NodeCPtr dict_value
+					) -> bool {
+						return add_flattened_modifier_cb(modifier_effect_mapping, key, dict_key, dict_value);
+					}
+				)(value);
 			}
 		}
 
@@ -781,16 +877,15 @@ key_value_callback_t ModifierManager::_modifier_effect_callback(
 	};
 }
 
-node_callback_t ModifierManager::expect_validated_modifier_value_and_default(
-	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type, key_value_callback_t default_callback,
-	ModifierEffectValidator auto effect_validator
+node_callback_t ModifierManager::expect_modifier_value_and_default(
+	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type, key_value_callback_t default_callback
 ) const {
-	return [this, modifier_callback, type, default_callback, effect_validator](ast::NodeCPtr root) -> bool {
+	return [this, modifier_callback, type, default_callback](ast::NodeCPtr root) -> bool {
 		ModifierValue modifier;
 
 		bool ret = expect_dictionary_reserve_length(
 			modifier.values,
-			_modifier_effect_callback(modifier, type, default_callback, effect_validator)
+			_modifier_effect_callback(modifier, type, default_callback)
 		)(root);
 
 		ret &= modifier_callback(std::move(modifier));
@@ -799,45 +894,10 @@ node_callback_t ModifierManager::expect_validated_modifier_value_and_default(
 	};
 }
 
-node_callback_t ModifierManager::expect_validated_modifier_value(
-	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type,
-	ModifierEffectValidator auto effect_validator
-) const {
-	return expect_validated_modifier_value_and_default(modifier_callback, type, key_value_invalid_callback, effect_validator);
-}
-
-node_callback_t ModifierManager::expect_modifier_value_and_default(
-	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type, key_value_callback_t default_callback
-) const {
-	return expect_validated_modifier_value_and_default(
-		modifier_callback, type, default_callback, [](ModifierEffect const&) -> bool {
-			return true;
-		}
-	);
-}
-
 node_callback_t ModifierManager::expect_modifier_value(
 	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type
 ) const {
 	return expect_modifier_value_and_default(modifier_callback, type, key_value_invalid_callback);
-}
-
-node_callback_t ModifierManager::expect_whitelisted_modifier_value_and_default(
-	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type, string_set_t const& whitelist,
-	key_value_callback_t default_callback
-) const {
-	return expect_validated_modifier_value_and_default(
-		modifier_callback, type, default_callback,
-		[&whitelist](ModifierEffect const& effect) -> bool {
-			return whitelist.contains(effect.get_identifier());
-		}
-	);
-}
-
-node_callback_t ModifierManager::expect_whitelisted_modifier_value(
-	callback_t<ModifierValue&&> modifier_callback, Modifier::modifier_type_t type, string_set_t const& whitelist
-) const {
-	return expect_whitelisted_modifier_value_and_default(modifier_callback, type, whitelist, key_value_invalid_callback);
 }
 
 node_callback_t ModifierManager::expect_modifier_value_and_key_map_and_default(

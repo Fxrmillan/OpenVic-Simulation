@@ -1,5 +1,7 @@
 #include "MapInstance.hpp"
 
+#include <execution>
+
 #include "openvic-simulation/history/ProvinceHistory.hpp"
 #include "openvic-simulation/map/MapDefinition.hpp"
 #include "openvic-simulation/utility/Logger.hpp"
@@ -43,6 +45,7 @@ ProvinceDefinition::index_t MapInstance::get_selected_province_index() const {
 
 bool MapInstance::setup(
 	BuildingTypeManager const& building_type_manager,
+	MarketInstance& market_instance,
 	ModifierEffectCache const& modifier_effect_cache,
 	decltype(ProvinceInstance::pop_type_distribution)::keys_t const& pop_type_keys,
 	decltype(ProvinceInstance::ideology_distribution)::keys_t const& ideology_keys
@@ -61,7 +64,8 @@ bool MapInstance::setup(
 	province_instances.reserve(map_definition.get_province_definition_count());
 
 	for (ProvinceDefinition const& province : map_definition.get_province_definitions()) {
-		ret &= province_instances.add_item({ 
+		ret &= province_instances.add_item({
+			market_instance,
 			modifier_effect_cache, 
 			province,
 			pop_type_keys,
@@ -159,9 +163,15 @@ void MapInstance::update_gamestate(const Date today, DefineManager const& define
 }
 
 void MapInstance::map_tick(const Date today) {
-	for (ProvinceInstance& province : province_instances.get_items()) {
-		province.province_tick(today);
-	}
+	std::vector<ProvinceInstance>& provinces = province_instances.get_items();
+	std::for_each(
+		std::execution::par,
+		provinces.begin(),
+		provinces.end(),
+		[today](ProvinceInstance& province) -> void {
+			province.province_tick(today);
+		}
+	);
 }
 
 void MapInstance::initialise_for_new_game(
@@ -169,8 +179,14 @@ void MapInstance::initialise_for_new_game(
 	DefineManager const& define_manager
 ) {
 	update_gamestate(today, define_manager);
-	for (ProvinceInstance& province : province_instances.get_items()) {
-		province.initialise_rgo();
-		province.province_tick(today);
-	}
+	std::vector<ProvinceInstance>& provinces = province_instances.get_items();
+	std::for_each(
+		std::execution::par,
+		provinces.begin(),
+		provinces.end(),
+		[today](ProvinceInstance& province) -> void {
+			province.initialise_rgo();
+			province.province_tick(today);
+		}
+	);
 }

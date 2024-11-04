@@ -9,6 +9,12 @@ bool MarketInstance::setup(GoodInstanceManager& new_good_instance_manager) {
 	return true;
 }
 
+void MarketInstance::place_buy_up_to_order(const BuyUpToOrder buy_up_to_order) {
+	GoodDefinition const* const good = buy_up_to_order.get_good();
+	GoodInstance* const good_instance = good_instance_manager->get_good_instance_by_identifier(good->get_identifier());
+	good_instance->add_buy_up_to_order(buy_up_to_order);
+}
+
 void MarketInstance::place_market_sell_order(const MarketSellOrder market_sell_order) {
 	GoodDefinition const* const good = market_sell_order.get_good();
 	GoodInstance* const good_instance = good_instance_manager->get_good_instance_by_identifier(good->get_identifier());

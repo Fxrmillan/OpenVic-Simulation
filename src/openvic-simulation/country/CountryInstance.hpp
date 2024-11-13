@@ -1,5 +1,6 @@
 #pragma once
 
+#include <utility>
 #include <vector>
 
 #include <plf_colony.h>
@@ -12,7 +13,10 @@
 #include "openvic-simulation/types/Date.hpp"
 #include "openvic-simulation/types/IdentifierRegistry.hpp"
 #include "openvic-simulation/types/IndexedMap.hpp"
+#include "openvic-simulation/types/fixed_point/FixedPoint.hpp"
+#include "openvic-simulation/types/Sliders.hpp"
 #include "openvic-simulation/utility/Getters.hpp"
+
 
 namespace OpenVic {
 	struct CountryInstanceManager;
@@ -98,6 +102,10 @@ namespace OpenVic {
 
 		/* Budget */
 		fixed_point_t PROPERTY(cash_stockpile);
+		slider_value_t PROPERTY(poor_tax_rate_slider);
+		slider_value_t PROPERTY(middle_tax_rate_slider);
+		slider_value_t PROPERTY(rich_tax_rate_slider);
+
 		// TODO - cash stockpile change over last 30 days
 
 		/* Technology */
@@ -226,6 +234,8 @@ namespace OpenVic {
 		bool set_upper_house(Ideology const* ideology, fixed_point_t popularity);
 		bool set_ruling_party(CountryParty const& new_ruling_party);
 		bool add_reform(Reform const& new_reform);
+
+		bool set_value_for_slider(SliderManager& slider_manager, int const* new_value);
 
 		template<UnitType::branch_t Branch>
 		bool add_unit_instance_group(UnitInstanceGroup<Branch>& group);

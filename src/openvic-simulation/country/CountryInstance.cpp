@@ -10,6 +10,8 @@
 #include "openvic-simulation/politics/Ideology.hpp"
 #include "openvic-simulation/research/Invention.hpp"
 #include "openvic-simulation/research/Technology.hpp"
+#include "openvic-simulation/types/Sliders.hpp"
+#include "openvic-simulation/types/fixed_point/FixedPoint.hpp"
 
 using namespace OpenVic;
 
@@ -56,6 +58,11 @@ CountryInstance::CountryInstance(
 
 	/* Budget */
 	cash_stockpile { 0 },
+	poor_tax_rate_slider {50},
+	middle_tax_rate_slider { 50},
+	rich_tax_rate_slider {50},
+
+	// TODO: 
 
 	/* Technology */
 	technology_unlock_levels { &technology_keys },
@@ -278,6 +285,10 @@ bool CountryInstance::add_reform(Reform const& new_reform) {
 	} else {
 		return true;
 	}
+}
+
+bool CountryInstance::set_value_for_slider(SliderManager& slider, int const* new_value) {
+	
 }
 
 template<UnitType::branch_t Branch>
@@ -974,8 +985,8 @@ void CountryInstance::update_modifier_sum(Date today, StaticModifierCache const&
 	modifier_sum.add_modifier(static_modifier_cache.get_infamy(), country_source, infamy);
 	modifier_sum.add_modifier(static_modifier_cache.get_literacy(), country_source, national_literacy);
 	modifier_sum.add_modifier(static_modifier_cache.get_plurality(), country_source, plurality);
-	// TODO - difficulty modifiers, war, peace, debt_default_to, bad_debter, generalised_debt_default,
-	//        total_occupation, total_blockaded, in_bankrupcy
+	// TODO - difficulty modifiers, war, peace, debt_default_to, bad_debtor, generalised_debt_default,
+	//        total_occupation, total_blockaded, in_bankruptcy
 
 	// TODO - handle triggered modifiers
 
@@ -1198,7 +1209,7 @@ void CountryInstanceManager::update_rankings(Date today, DefineManager const& de
 	}
 
 	// Sort the great powers list by total rank, as pre-existing great powers may have changed rank order and new great
-	// powers will have beeen added to the end of the list regardless of rank.
+	// powers will have been added to the end of the list regardless of rank.
 	std::sort(great_powers.begin(), great_powers.end(), [](CountryInstance const* a, CountryInstance const* b) -> bool {
 		return a->get_total_rank() < b->get_total_rank();
 	});
